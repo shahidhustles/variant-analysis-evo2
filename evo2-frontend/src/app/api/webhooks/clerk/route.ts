@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment,@typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access */
 import { Webhook } from "svix";
 import { headers } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
@@ -54,7 +53,7 @@ export async function POST(req: NextRequest) {
       "svix-id": svix_id,
       "svix-timestamp": svix_timestamp,
       "svix-signature": svix_signature,
-    }) as unknown as ClerkEvent;
+    }) as ClerkEvent;
   } catch (err) {
     console.error("Error verifying webhook:", err);
     return new Response("Error occurred", { status: 400 });
