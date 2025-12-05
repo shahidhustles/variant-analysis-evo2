@@ -5,3 +5,5 @@ pandas
 seaborn
 scikit-learn
 openpyxl
+requests
+biopython

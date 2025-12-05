@@ -4,27 +4,50 @@ import modal
 
 from pydantic import BaseModel
 
+
 class VariantRequest(BaseModel):
     variant_position: int
     alternative: str
     genome: str
     chromosome: str
 
+
 evo2_image = (
-    modal.Image.from_registry(
-        "nvidia/cuda:12.4.0-devel-ubuntu22.04", add_python="3.12"
-    )
+    modal.Image.from_registry("nvidia/cuda:12.4.0-devel-ubuntu22.04", add_python="3.12")
     .apt_install(
-        ["build-essential", "cmake", "ninja-build",
-            "libcudnn8", "libcudnn8-dev", "git", "gcc", "g++"]
+        [
+            "build-essential",
+            "cmake",
+            "ninja-build",
+            "libcudnn8",
+            "libcudnn8-dev",
+            "git",
+            "gcc",
+            "g++",
+        ]
     )
-    .env({
-        "CC": "/usr/bin/gcc",
-        "CXX": "/usr/bin/g++",
-    })
-    .run_commands("git clone --recurse-submodules https://github.com/ArcInstitute/evo2.git && cd evo2 && pip install .")
+    .env(
+        {
+            "CC": "/usr/bin/gcc",
+            "CXX": "/usr/bin/g++",
+        }
+    )
+    .pip_install("ninja", "pybind11", "psutil")
+    .run_commands(
+        "git clone --recurse-submodules https://github.com/ArcInstitute/evo2.git && "
+        "cd evo2 && "
+        "git checkout 7728316d34f1290117307fdc5e004bf4afba6b70 && "
+        "git submodule update --init --recursive && "
+        "sed -i 's/np.fromstring(text, dtype=np.uint8)/np.frombuffer(text.encode(), dtype=np.uint8)/g' vortex/vortex/model/tokenizer.py && "
+        "cd vortex && "
+        "PYTHON=/usr/local/bin/python3.12 make setup-full && "
+        "cd .. && "
+        "pip install ."
+    )
     .run_commands("pip uninstall -y transformer-engine transformer_engine")
-    .run_commands("pip install 'transformer_engine[pytorch]==1.13' --no-build-isolation")
+    .run_commands(
+        "pip install 'transformer_engine[pytorch]==1.13' --no-build-isolation"
+    )
     .pip_install_from_requirements("requirements.txt")
 )
 
@@ -52,30 +75,40 @@ def run_brca1_analysis():
     WINDOW_SIZE = 8192
 
     print("Loading evo2 model...")
-    model = Evo2('evo2_7b')
+    model = Evo2("evo2_7b")
     print("Evo2 model loaded")
 
     brca1_df = pd.read_excel(
-        '/evo2/notebooks/brca1/41586_2018_461_MOESM3_ESM.xlsx',
+        "/evo2/notebooks/brca1/41586_2018_461_MOESM3_ESM.xlsx",
         header=2,
     )
-    brca1_df = brca1_df[[
-        'chromosome', 'position (hg19)', 'reference', 'alt', 'function.score.mean', 'func.class',
-    ]]
+    brca1_df = brca1_df[
+        [
+            "chromosome",
+            "position (hg19)",
+            "reference",
+            "alt",
+            "function.score.mean",
+            "func.class",
+        ]
+    ]
 
-    brca1_df.rename(columns={
-        'chromosome': 'chrom',
-        'position (hg19)': 'pos',
-        'reference': 'ref',
-        'alt': 'alt',
-        'function.score.mean': 'score',
-        'func.class': 'class',
-    }, inplace=True)
+    brca1_df.rename(
+        columns={
+            "chromosome": "chrom",
+            "position (hg19)": "pos",
+            "reference": "ref",
+            "alt": "alt",
+            "function.score.mean": "score",
+            "func.class": "class",
+        },
+        inplace=True,
+    )
 
     # Convert to two-class system
-    brca1_df['class'] = brca1_df['class'].replace(['FUNC', 'INT'], 'FUNC/INT')
+    brca1_df["class"] = brca1_df["class"].replace(["FUNC", "INT"], "FUNC/INT")
 
-    with gzip.open('/evo2/notebooks/brca1/GRCh37.p13_chr17.fna.gz', "rt") as handle:
+    with gzip.open("/evo2/notebooks/brca1/GRCh37.p13_chr17.fna.gz", "rt") as handle:
         for record in SeqIO.parse(handle, "fasta"):
             seq_chr17 = str(record.seq)
             break
@@ -94,12 +127,11 @@ def run_brca1_analysis():
         p = row["pos"] - 1  # Convert to 0-indexed position
         full_seq = seq_chr17
 
-        ref_seq_start = max(0, p - WINDOW_SIZE//2)
-        ref_seq_end = min(len(full_seq), p + WINDOW_SIZE//2)
+        ref_seq_start = max(0, p - WINDOW_SIZE // 2)
+        ref_seq_end = min(len(full_seq), p + WINDOW_SIZE // 2)
         ref_seq = seq_chr17[ref_seq_start:ref_seq_end]
-        snv_pos_in_ref = min(WINDOW_SIZE//2, p)
-        var_seq = ref_seq[:snv_pos_in_ref] + \
-            row["alt"] + ref_seq[snv_pos_in_ref+1:]
+        snv_pos_in_ref = min(WINDOW_SIZE // 2, p)
+        var_seq = ref_seq[:snv_pos_in_ref] + row["alt"] + ref_seq[snv_pos_in_ref + 1 :]
 
         # Get or create index for reference sequence
         if ref_seq not in ref_seq_to_index:
@@ -111,25 +143,23 @@ def run_brca1_analysis():
 
     ref_seq_indexes = np.array(ref_seq_indexes)
 
-    print(
-        f'Scoring likelihoods of {len(ref_seqs)} reference sequences with Evo 2...')
+    print(f"Scoring likelihoods of {len(ref_seqs)} reference sequences with Evo 2...")
     ref_scores = model.score_sequences(ref_seqs)
 
-    print(
-        f'Scoring likelihoods of {len(var_seqs)} variant sequences with Evo 2...')
+    print(f"Scoring likelihoods of {len(var_seqs)} variant sequences with Evo 2...")
     var_scores = model.score_sequences(var_seqs)
 
     # Subtract score of corresponding reference sequences from scores of variant sequences
     delta_scores = np.array(var_scores) - np.array(ref_scores)[ref_seq_indexes]
 
     # Add delta scores to dataframe
-    brca1_subset[f'evo2_delta_score'] = delta_scores
+    brca1_subset[f"evo2_delta_score"] = delta_scores
 
-    y_true = (brca1_subset['class'] == 'LOF')
-    auroc = roc_auc_score(y_true, -brca1_subset['evo2_delta_score'])
+    y_true = brca1_subset["class"] == "LOF"
+    auroc = roc_auc_score(y_true, -brca1_subset["evo2_delta_score"])
 
     # --- Calculate threshold START
-    y_true = (brca1_subset["class"] == "LOF")
+    y_true = brca1_subset["class"] == "LOF"
 
     fpr, tpr, thresholds = roc_curve(y_true, -brca1_subset["evo2_delta_score"])
 
@@ -137,10 +167,10 @@ def run_brca1_analysis():
 
     optimal_threshold = -thresholds[optimal_idx]
 
-    lof_scores = brca1_subset.loc[brca1_subset["class"]
-                                  == "LOF", "evo2_delta_score"]
-    func_scores = brca1_subset.loc[brca1_subset["class"]
-                                   == "FUNC/INT", "evo2_delta_score"]
+    lof_scores = brca1_subset.loc[brca1_subset["class"] == "LOF", "evo2_delta_score"]
+    func_scores = brca1_subset.loc[
+        brca1_subset["class"] == "FUNC/INT", "evo2_delta_score"
+    ]
 
     lof_std = lof_scores.std()
     func_std = func_scores.std()
@@ -148,7 +178,7 @@ def run_brca1_analysis():
     confidence_params = {
         "threshold": optimal_threshold,
         "lof_std": lof_std,
-        "func_std": func_std
+        "func_std": func_std,
     }
 
     print("Confidence params:", confidence_params)
@@ -160,31 +190,33 @@ def run_brca1_analysis():
     # Plot stripplot of distributions
     p = sns.stripplot(
         data=brca1_subset,
-        x='evo2_delta_score',
-        y='class',
-        hue='class',
-        order=['FUNC/INT', 'LOF'],
-        palette=['#777777', 'C3'],
+        x="evo2_delta_score",
+        y="class",
+        hue="class",
+        order=["FUNC/INT", "LOF"],
+        palette=["#777777", "C3"],
         size=2,
         jitter=0.3,
     )
 
     # Mark medians from each distribution
-    sns.boxplot(showmeans=True,
-                meanline=True,
-                meanprops={'visible': False},
-                medianprops={'color': 'k', 'ls': '-', 'lw': 2},
-                whiskerprops={'visible': False},
-                zorder=10,
-                x="evo2_delta_score",
-                y="class",
-                data=brca1_subset,
-                showfliers=False,
-                showbox=False,
-                showcaps=False,
-                ax=p)
-    plt.xlabel('Delta likelihood score, Evo 2')
-    plt.ylabel('BRCA1 SNV class')
+    sns.boxplot(
+        showmeans=True,
+        meanline=True,
+        meanprops={"visible": False},
+        medianprops={"color": "k", "ls": "-", "lw": 2},
+        whiskerprops={"visible": False},
+        zorder=10,
+        x="evo2_delta_score",
+        y="class",
+        data=brca1_subset,
+        showfliers=False,
+        showbox=False,
+        showcaps=False,
+        ax=p,
+    )
+    plt.xlabel("Delta likelihood score, Evo 2")
+    plt.ylabel("BRCA1 SNV class")
     plt.tight_layout()
 
     buffer = BytesIO()
@@ -192,7 +224,11 @@ def run_brca1_analysis():
     buffer.seek(0)
     plot_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    return {'variants': brca1_subset.to_dict(orient="records"), "plot": plot_data, "auroc": auroc}
+    return {
+        "variants": brca1_subset.to_dict(orient="records"),
+        "plot": plot_data,
+        "auroc": auroc,
+    }
 
 
 @app.function()
@@ -226,8 +262,7 @@ def get_genome_sequence(position, genome: str, chromosome: str, window_size=8192
     start = max(0, position - 1 - half_window)
     end = position - 1 + half_window + 1
 
-    print(
-        f"Fetching {window_size}bp window around position {position} from UCSC API..")
+    print(f"Fetching {window_size}bp window around position {position} from UCSC API..")
     print(f"Coordinates: {chromosome}:{start}-{end} ({genome})")
 
     api_url = f"https://api.genome.ucsc.edu/getData/sequence?genome={genome};chrom={chromosome};start={start};end={end}"
@@ -235,7 +270,8 @@ def get_genome_sequence(position, genome: str, chromosome: str, window_size=8192
 
     if response.status_code != 200:
         raise Exception(
-            f"Failed to fetch genome sequence from UCSC API: {response.status_code}")
+            f"Failed to fetch genome sequence from UCSC API: {response.status_code}"
+        )
 
     genome_data = response.json()
 
@@ -247,17 +283,20 @@ def get_genome_sequence(position, genome: str, chromosome: str, window_size=8192
     expected_length = end - start
     if len(sequence) != expected_length:
         print(
-            f"Warning: received sequence length ({len(sequence)}) differs from expected ({expected_length})")
+            f"Warning: received sequence length ({len(sequence)}) differs from expected ({expected_length})"
+        )
 
-    print(
-        f"Loaded reference genome sequence window (length: {len(sequence)} bases)")
+    print(f"Loaded reference genome sequence window (length: {len(sequence)} bases)")
 
     return sequence, start
 
 
 def analyze_variant(relative_pos_in_window, reference, alternative, window_seq, model):
-    var_seq = window_seq[:relative_pos_in_window] + \
-        alternative + window_seq[relative_pos_in_window+1:]
+    var_seq = (
+        window_seq[:relative_pos_in_window]
+        + alternative
+        + window_seq[relative_pos_in_window + 1 :]
+    )
 
     ref_score = model.score_sequences([window_seq])[0]
     var_score = model.score_sequences([var_seq])[0]
@@ -280,17 +319,24 @@ def analyze_variant(relative_pos_in_window, reference, alternative, window_seq, 
         "alternative": alternative,
         "delta_score": float(delta_score),
         "prediction": prediction,
-        "classification_confidence": float(confidence)
+        "classification_confidence": float(confidence),
     }
 
 
-@app.cls(gpu="H100", volumes={mount_path: volume}, max_containers=3, retries=2, scaledown_window=120)
+@app.cls(
+    gpu="H100",
+    volumes={mount_path: volume},
+    max_containers=3,
+    retries=2,
+    scaledown_window=120,
+)
 class Evo2Model:
     @modal.enter()
     def load_evo2_model(self):
         from evo2 import Evo2
+
         print("Loading evo2 model...")
-        self.model = Evo2('evo2_7b')
+        self.model = Evo2("evo2_7b")
         print("Evo2 model loaded")
 
     # @modal.method()
@@ -312,7 +358,7 @@ class Evo2Model:
             position=variant_position,
             genome=genome,
             chromosome=chromosome,
-            window_size=WINDOW_SIZE
+            window_size=WINDOW_SIZE,
         )
 
         print(f"Fetched genome seauence window, first 100: {window_seq[:100]}")
@@ -322,7 +368,8 @@ class Evo2Model:
 
         if relative_pos < 0 or relative_pos >= len(window_seq):
             raise ValueError(
-                f"Variant position {variant_position} is outside the fetched window (start={seq_start+1}, end={seq_start+len(window_seq)})")
+                f"Variant position {variant_position} is outside the fetched window (start={seq_start+1}, end={seq_start+len(window_seq)})"
+            )
 
         reference = window_seq[relative_pos]
         print("Reference is: " + reference)
@@ -333,7 +380,7 @@ class Evo2Model:
             reference=reference,
             alternative=alternative,
             window_seq=window_seq,
-            model=self.model
+            model=self.model,
         )
 
         result["position"] = variant_position
@@ -345,7 +392,7 @@ class Evo2Model:
 def main():
     # Example of how you'd call the deployed Modal Function from your client
     import requests
-    import json    # brca1_example.remote()
+    import json  # brca1_example.remote()
 
     evo2Model = Evo2Model()
 
@@ -355,12 +402,10 @@ def main():
         "variant_position": 43119628,
         "alternative": "G",
         "genome": "hg38",
-        "chromosome": "chr17"
+        "chromosome": "chr17",
     }
 
-    headers = {
-        "Content-Type": "application/json"
-    }
+    headers = {"Content-Type": "application/json"}
 
     response = requests.post(url, json=payload, headers=headers)
     response.raise_for_status()

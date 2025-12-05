@@ -91,7 +91,7 @@ export default function GeneViewer({
         if (apiError) {
           setError(apiError);
         }
-      } catch (err) {
+      } catch (_err) {
         setError("Failed to load sequence data");
       } finally {
         setIsLoadingSequence(false);
@@ -132,8 +132,8 @@ export default function GeneViewer({
       }
     };
 
-    initializeGeneData();
-  }, [gene, genomeId]);
+    void initializeGeneData();
+  }, [gene, genomeId, fetchGeneSequence]);
 
   const handleSequenceClick = useCallback(
     (position: number, nucleotide: string) => {
@@ -176,7 +176,7 @@ export default function GeneViewer({
     }
 
     setError(null);
-    fetchGeneSequence(start, end);
+    void fetchGeneSequence(start, end);
   }, [startPosition, endPosition, fetchGeneSequence, geneBounds]);
 
   const fetchClinvarVariants = async () => {
@@ -193,7 +193,7 @@ export default function GeneViewer({
       );
       setClinvarVariants(variants);
       console.log(variants);
-    } catch (error) {
+    } catch (_error) {
       setClinvarError("Failed to fetch ClinVar variants");
       setClinvarVariants([]);
     } finally {
@@ -203,8 +203,9 @@ export default function GeneViewer({
 
   useEffect(() => {
     if (geneBounds) {
-      fetchClinvarVariants();
+      void fetchClinvarVariants();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geneBounds]);
 
   const showComparison = (variant: ClinvarVariant) => {
