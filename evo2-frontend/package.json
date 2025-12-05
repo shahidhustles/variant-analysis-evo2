@@ -16,9 +16,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.36.0",
     "@radix-ui/react-select": "^2.2.2",
     "@radix-ui/react-slot": "^1.2.0",
     "@radix-ui/react-tabs": "^1.1.8",
+    "@supabase/supabase-js": "^2.86.2",
     "@t3-oss/env-nextjs": "^0.12.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -26,6 +28,7 @@
     "next": "^15.2.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "svix": "^1.82.0",
     "tailwind-merge": "^3.2.0",
     "zod": "^3.24.2"
   },

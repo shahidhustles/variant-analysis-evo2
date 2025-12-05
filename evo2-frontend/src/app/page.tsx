@@ -1,8 +1,10 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, HelpCircle, X, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useUser, useClerk } from "@clerk/nextjs";
 import GeneViewer from "~/components/gene-viewer";
+import UserGuide from "~/components/user-guide";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -34,6 +36,8 @@ import {
 type Mode = "browse" | "search";
 
 export default function HomePage() {
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const [genomes, setGenomes] = useState<GenomeAssemblyFromSearch[]>([]);
   const [selectedGenome, setSelectedGenome] = useState<string>("hg38");
   const [chromosomes, setChromosomes] = useState<ChromosomeFromSeach[]>([]);
@@ -44,6 +48,7 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("search");
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     const fetchGenomes = async () => {
@@ -108,6 +113,18 @@ export default function HomePage() {
     );
   }, [selectedChromosome, selectedGenome, mode]);
 
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null; // Middleware will redirect to sign-in
+  }
+
   const handleGenomeChange = (value: string) => {
     setSelectedGenome(value);
     setSearchResults([]);
@@ -147,19 +164,84 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#e9eeea]">
+      {/* Help Button */}
+      <div className="fixed right-6 bottom-6 z-40">
+        <Button
+          onClick={() => setShowGuide(!showGuide)}
+          className="h-14 w-14 rounded-full bg-[#de8246] p-0 shadow-lg hover:bg-[#de8246]/90"
+          title="Open User Guide"
+        >
+          <HelpCircle className="h-6 w-6 text-white" />
+        </Button>
+      </div>
+
+      {/* User Guide Modal */}
+      {showGuide && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm">
+          <div className="flex min-h-screen items-start justify-center pt-4">
+            <div className="relative w-full max-w-4xl rounded-lg bg-white shadow-xl">
+              <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white p-4">
+                <h2 className="text-xl font-semibold text-[#3c4f3d]">
+                  User Guide & Documentation
+                </h2>
+                <button
+                  onClick={() => setShowGuide(false)}
+                  className="rounded-lg p-1 hover:bg-gray-100"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+              <div className="max-h-[calc(100vh-120px)] overflow-y-auto">
+                <UserGuide />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="border-b border-[#3c4f3d]/10 bg-white">
         <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <h1 className="text-xl font-light tracking-wide text-[#3c4f3d]">
-                <span className="font-normal">EVO</span>
-                <span className="text-[#de8246]">2</span>
-              </h1>
-              <div className="absolute -bottom-1 left-0 h-[2px] w-12 bg-[#de8246]"></div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <h1 className="text-xl font-light tracking-wide text-[#3c4f3d]">
+                  <span className="font-normal">EVO</span>
+                  <span className="text-[#de8246]">2</span>
+                </h1>
+                <div className="absolute -bottom-1 left-0 h-[2px] w-12 bg-[#de8246]"></div>
+              </div>
+              <span className="text-sm font-light text-[#3c4f3d]/70">
+                Variant Analysis
+              </span>
             </div>
-            <span className="text-sm font-light text-[#3c4f3d]/70">
-              Variant Analysis
-            </span>
+            <div className="flex items-center gap-4">
+              <div className="text-right text-sm">
+                <p className="font-medium text-[#3c4f3d]">
+                  {user.firstName} {user.lastName}
+                </p>
+                <p className="text-xs text-[#3c4f3d]/60">
+                  {user.emailAddresses[0]?.emailAddress}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowGuide(!showGuide)}
+                className="gap-2 text-[#3c4f3d] hover:bg-[#3c4f3d]/10"
+              >
+                <HelpCircle className="h-4 w-4" />
+                <span className="text-xs sm:text-sm">Documentation</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void signOut()}
+                className="gap-2 text-red-600 hover:bg-red-50"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="text-xs sm:text-sm">Sign Out</span>
+              </Button>
+            </div>
           </div>
         </div>
       </header>
