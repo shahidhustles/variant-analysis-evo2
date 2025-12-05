@@ -244,7 +244,8 @@ export async function fetchGeneDetails(geneId: string): Promise<{
       return { geneDetails: null, geneBounds: null, initialRange: null };
     }
 
-    const detailData = (await detailsResponse.json()) as NcbiGeneSummaryResponse;
+    const detailData =
+      (await detailsResponse.json()) as NcbiGeneSummaryResponse;
 
     if (detailData.result?.[geneId]) {
       const detail = detailData.result[geneId];

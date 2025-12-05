@@ -73,8 +73,9 @@ export function VariantComparisonModal({
                         </span>
                         <span className="font-mono text-xs">
                           {(() => {
-                            const match =
-                              /(\w)>(\w)/.exec(comparisonVariant.title);
+                            const match = /(\w)>(\w)/.exec(
+                              comparisonVariant.title,
+                            );
                             if (match?.[1] && match[2]) {
                               const [, ref, alt] = match;
                               return (

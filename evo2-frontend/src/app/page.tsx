@@ -1,6 +1,6 @@
 "use client";
 
-import {  Search,  } from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import GeneViewer from "~/components/gene-viewer";
 import { Button } from "~/components/ui/button";
